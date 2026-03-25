@@ -1,7 +1,7 @@
 # sensory_motor_reconfiguration_in_aging
-MATLAB code used for data acquisition and data analyses in the study Impaired Sensory-motor Reconfiguration and Pupil-linked Arousal in Aging
+Code used for data acquisition and data analyses in the study Impaired Sensory-motor Reconfiguration and Pupil-linked Arousal in Aging
 
-Analyses scripts run on MATLAB and depend on:
+Code is written for MATLAB and depends on:
 
 	eeglab functions - https://sccn.ucsd.edu/eeglab/index.php
 
