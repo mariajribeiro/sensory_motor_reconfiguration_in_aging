@@ -1,0 +1,1274 @@
+% run on server  graphs on computer
+clear; close all
+
+addpath('/DATAPOOL/home/mribeiro/matlab_toolboxes/eeglab2023.0/');
+
+
+group = participants_included;
+
+task_pupil_dir = [pwd, filesep, 'preprocessed_pupil_files'];
+S = dir(task_pupil_dir);
+
+% open eeglab
+[ALLEEG EEG, CURRENTSET ALLCOM] = eeglab;
+
+% R_rs = cell(2); R_3ars = cell(2); R_15ars = cell(2); R_btwrs = cell(2); R_highcpp = cell(2); R_lowcpp = cell(2);
+% R_choice = cell(2); epochs_nochoice = cell(2); R_rsnochoice = cell(2);
+% R_btwrsnochoice = cell(2); epochs_btwrsnochoice = cell(2); 
+
+R_rs_btwrs_ch = cell(2); %R_highlowcpp_ch  = cell(2);
+number_choice_events = cell(2); 
+number_rs_events = cell(2); 
+number_btwrs_events = cell(2); 
+
+
+% PRs_lockedwithruleswitch = cell(2);
+for grp = 1:2
+    for sbj = 1:length(group{grp})
+        close all
+        subject = char(group{grp}(sbj));
+
+        % each subject has at least one session outside the scanner (sessions 1 and 2) and one inside
+        % the scanner (session 3)
+        % some participants also have outside the scanner four runs of
+        % inference-only task saved as session 4
+        S = dir([pwd, filesep 'ET_data', filesep, char(subject)]);
+        sessions = []; % sessions = sum([S(~ismember({S.name},{'.','..'})).isdir]);
+        for f = 1:length(S)
+            if contains(S(f).name, 'session')
+                sessions = [sessions, str2num(S(f).name(8))];
+            end
+        end
+
+        b=0; condition = []; cpp_ruleswitch_tmp         = []; uncertainty_ruleswitch_tmp = []; number_highlowcpp_rs_tmp = [];
+        clear sample_genside
+        Y = []; X1_rs = []; X2_ch = []; X_btwrs = [];  X_choice = [];
+        n_rs_events = 0; n_btwrs_events = 0; n_choice_events = 0;
+%          ep_nochoice_btwrs = 0;   X_btwrs_nochoice = [];   X_highcpp = [];   X_lowcpp = [];  
+        rs_lockedwithruleswitch = []; %ep_nochoice = 0;
+        for session = sessions
+            % pupil preprocessed + gaze position
+            % 1 - in the lab; 2 - in the MRI scanner; 3 -
+            % inference-only task in the lab
+            cond = [];
+            if ismember(session, [1, 2]) % in the lab - hierarchical decisions task
+                condition = [condition, 1];
+                cond = 1;
+            elseif session == 3 % in the scanner - hierarchical decisions task
+                condition = [condition, 2];
+                cond = 2;
+            elseif session == 4 % inference only in the lab
+                condition = [condition, 3];
+                cond = 3;
+                continue
+            end
+            
+            folder_session = [pwd, filesep, 'ET_data', filesep, char(subject), filesep, 'session', num2str(session)];
+            MyFolderInfo = dir(folder_session);
+            runs = size(MyFolderInfo, 1)-2;
+            for run = 1:runs
+%                 disp(['run', num2str(run)])
+                if ismember(subject, {'AB057', 'AB101', 'AB067', 'AB112'}) && session == 1 && run == 1
+%                  AB112 - did not understand the task until run2
+%                  AB057, AB101,AB067 - first run stopped prematurely by mistake
+                    continue
+                elseif strcmp(subject, 'AB071') && session == 3 && run == 1
+                    % eye tracking data with bad focus for S3R1
+                    continue
+                elseif strcmp(subject, 'AB110') && (session == 3 && run~=1)
+                    % unstable eye tracking data - astigmatism correction
+                    continue
+                elseif strcmp(subject, 'AB132') && ((session == 1 && ismember(run, [1, 2, 3])) || session ==3)
+                    % this participant did not understand the task up to
+                    % the last run of session1
+                    % in the scanner ET could not capture the eye due to
+                    % glasses correcting for astigmatism
+                    continue
+                elseif strcmp(subject, 'AB134') && session == 3 && ismember(run, 1)
+                    % problems with using the response boxes in the scanner
+                    % during the first run
+                    continue
+                elseif strcmp(subject, 'AB136') && session == 1 && ismember(run, [1, 2])
+                    % participant with vision fusion problems (strabism) -
+                    % fist two runs of session one ET acquired with left
+                    % eye that was not the dominant and was not following
+                    % gaze
+                    continue
+                elseif strcmp(subject, 'AB127') && session == 4 && run == 4
+                    % eye tracking data deleted by mistake for S4R1
+                    continue
+                elseif strcmp(subject, 'AB132') && session == 3 % ET could not capture the eye - eye not within site of camera
+                    continue
+                elseif strcmp(subject, 'AB144') && session == 1 && run == 3 % did not remember task instructions - had to repeat training
+                    continue
+                elseif strcmp(subject, 'AB144') && session == 3 % could not see stimulus in the scanner - not feeling well
+                    continue
+                elseif strcmp(subject, 'AB148') && session == 1 % had not understood task instructions properly
+                    continue
+                elseif strcmp(subject, 'AB150') && session == 3 % ET not capturing the eye
+                    continue
+                elseif strcmp(subject, 'AB152') && session == 1 && run  == 3 % mistake with rule setting
+                    continue
+                elseif strcmp(subject, 'AB156') % did not understand the task
+                    continue
+                elseif strcmp(subject, 'AB157') && session == 1 && run  == 2 % ET data not saved
+                    continue
+                elseif strcmp(subject, 'AB174') && session == 1 && run  == 1 % could not see stimulus properly - used reading glasses from then on
+                    continue
+                elseif strcmp(subject, 'AB176') && session == 1 && run  == 1 % was applying the rule wrongly, asked to restart
+                    continue
+                elseif strcmp(subject, 'AB178') && session == 3 && run  == 1 % aborted run
+                    continue
+                elseif strcmp(subject, 'AB181') && session == 3 && run  == 1 % aborted run
+                    continue
+                end
+                b = b+1;
+                sample_dir = [folder_session , filesep, 'run', num2str(run)];
+
+                Files=dir(fullfile(sample_dir,'*.mat'));
+                filename = [];
+                for i=1:size(Files, 1)
+                    if contains(Files(i).name, [subject])
+                        filename = Files(i).name;
+                    end
+                end
+
+                load([sample_dir filesep filename]);
+
+                % determine samples where the rule switched
+                a = 0; sample_genside = [];
+                for i=1:size(p.out.log)
+                     if strcmp(p.out.log{i}(2), 'GL_TRIAL_GENSIDE')
+                         a = a+1;
+                         sample_genside(a, 1) = cell2mat(p.out.log{i}(3));
+                     end
+                end
+                
+                
+                % determine choice trials to delete from sample genside 
+                a = 0; trial_type = [];
+                for i=1:size(p.out.log)
+                     if strcmp(p.out.log{i}(2), 'GL_TRIAL_TYPE')
+                         a = a+1;
+                         trial_type(a, 1) = cell2mat(p.out.log{i}(3));
+                     end
+                end
+
+                sample_genside(trial_type == 1) = [];
+                
+                rule_switches = diff(sample_genside);
+                rule_switch = find(abs(rule_switches) > 0)+1;
+                
+                a = 0; sample_location_blocks = [];
+                for i=1:size(p.out.log)
+                     if strcmp(p.out.log{i}(2), 'GL_TRIAL_LOCATION')
+                         a = a+1;
+                         sample_location_blocks(a, 1) = cell2mat(p.out.log{i}(3));
+                     end
+                end
+                
+                
+                % calculate task parameters from inference model
+                % function [CPP, prior, LLR] = change_point_probability(sample_location, H, mu, sd)
+                mu = p.sequence.threshold; sd = p.sequence.sigma;
+                [CPP, prior, LLR] = change_point_probability(sample_location_blocks, 1/70, mu, sd);
+                
+%                 figure; plot(CPP); hold on; plot(sample_genside)
+                
+                
+                CPP_threshold = find(CPP > .06);
+                CPP_lowthreshold = find(CPP < .001); 
+%                 figure; plot(CPP); hold on; plot(CPP_threshold, ones(length(CPP_threshold), 1).*.1, 'o');
+%                 hold on; plot(CPP_lowthreshold, ones(length(CPP_lowthreshold), 1).*.08, '+')
+                % create variable with CPP and uncertainty aligned to rule
+                % switches - from 12 samples before up to  37 samples after rule switch
+                % for trials belonging to full task in lab and scanner
+%                 if ismember(cond, [1, 2])
+%                     for rs = 1:length(rule_switch)
+%                         if rule_switch(rs)>12 && rule_switch(rs) < length(CPP)-37
+%                             cpp_ruleswitch_tmp = [cpp_ruleswitch_tmp; CPP(rule_switch(rs)-12: rule_switch(rs)+37)];
+%                             uncertainty_ruleswitch_tmp = [uncertainty_ruleswitch_tmp; -abs(prior(rule_switch(rs)-12: rule_switch(rs)+37))'];
+%                         end
+%                     end
+%                     
+%                     number_highlowcpp_rs_tmp = [number_highlowcpp_rs_tmp; length(CPP_threshold), length(CPP_lowthreshold), length(rule_switch)]; 
+%                 end
+                
+             
+                
+                %% clear eeglab
+                STUDY = []; CURRENTSTUDY = 0; ALLEEG = []; EEG=[]; CURRENTSET=[];
+                % load pupil data
+                EEG = pop_loadset('filename',['pupil_', char(subject), '_',num2str(session), '_', num2str(run), '.set'],'filepath', task_pupil_dir);
+                [ALLEEG, EEG, CURRENTSET] = eeg_store( ALLEEG, EEG);
+
+                % create events for rule switches
+                % eventstruct = importevent( event, oldevent, srate, 'key1', 'value1', ...);
+                cues_latency = [];
+                for evn = 1:length(EEG.event)
+                    if EEG.event(evn).type == 1 %|| EEG.event(evn).type == 4
+                        cues_latency = [cues_latency; EEG.event(evn).latency];
+                    end
+                end
+                
+                rule_switch_latency = cues_latency(rule_switch);
+                evn_rule_switches = [ones(length(rule_switch_latency), 1) * 5, rule_switch_latency];
+                
+                % create event in between two true switchs for comparison - 6
+                mid_rule_switch_latency = [];
+                for r = 1:length(rule_switch)-1
+                    mid_rule_switch_latency(r) = cues_latency(rule_switch(r)+round((rule_switch(r+1)-rule_switch(r))/2));
+                end
+                
+                evn_norule_switches = [ones(length(mid_rule_switch_latency), 1) * 6, mid_rule_switch_latency'];
+                
+
+               % create events for large CPPs
+                cpp_latency = cues_latency(CPP_threshold);
+                evn_cpp = [ones(length(cpp_latency), 1) * 7, cpp_latency];
+                
+                % low cpp events = 8
+                lowcpp_latency = cues_latency(CPP_lowthreshold);
+                evn_lowcpp = [ones(length(lowcpp_latency), 1) * 8, lowcpp_latency];
+                
+                evn_cpp_all = [evn_rule_switches; evn_norule_switches; evn_cpp; evn_lowcpp];
+                
+               % add cue events 5 if there was a switch in the generative distribution
+               % add cue events 6 for a cue in between rule switches
+               % add cue events 7 if there was a large CPP value
+               % add cue events 8 if there was a low CPP value
+
+               
+                % to ensure that if CPP falls on rule switch it is not
+                % overwritten use this instead
+                EEG = eeg_checkset( EEG );
+                EEG = pop_importevent( EEG, 'event',evn_cpp_all,'fields',{'type','latency'},'timeunit',NaN,'align',0,'optimalign','off');
+                [ALLEEG, EEG, CURRENTSET] = eeg_store( ALLEEG, EEG);
+                
+                % downsample pupil to 50 Hz
+                nanidx_chn = EEG.data(6, :);
+                EEG = eeg_checkset( EEG );
+                EEG = pop_resample( EEG, 50);
+                [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, 2,'gui','off'); 
+
+                evn_rule_switch_idx_50Hz = []; evn_btwrule_switch_idx_50Hz = []; evn_highcpp_idx_50Hz = [];
+                evn_lowcpp_idx_50Hz = []; evn_3afterruleswitch_idx_50Hz = []; evn_15afterruleswitch_idx_50Hz = [];
+                evn_choicetrial_idx_50Hz = [];
+                for e = 1:length(EEG.event)
+                    if EEG.event(e).type == 5
+                        evn_rule_switch_idx_50Hz = [evn_rule_switch_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 6
+                        evn_btwrule_switch_idx_50Hz = [evn_btwrule_switch_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 7
+                        evn_highcpp_idx_50Hz = [evn_highcpp_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 8
+                        evn_lowcpp_idx_50Hz = [evn_lowcpp_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 9
+                        evn_3afterruleswitch_idx_50Hz = [evn_3afterruleswitch_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 10
+                        evn_15afterruleswitch_idx_50Hz = [evn_15afterruleswitch_idx_50Hz; round(EEG.event(e).latency)];
+                    elseif EEG.event(e).type == 4
+                        evn_choicetrial_idx_50Hz = [evn_choicetrial_idx_50Hz; round(EEG.event(e).latency)];
+                    end
+                end
+                
+                
+                % create variable with probability of rule-switch locked
+                % with each type of event
+%                 epoch_idx = -250:499;
+%                 rs_lockedwithruleswitch_tmp = zeros(length(evn_rule_switch_idx_50Hz), length(epoch_idx));
+%                 
+%                 for r = 2:length(evn_rule_switch_idx_50Hz)-1
+%                     if evn_rule_switch_idx_50Hz(r-1) > evn_rule_switch_idx_50Hz(r)-250
+%                         rs_lockedwithruleswitch_tmp(r, 250-(evn_rule_switch_idx_50Hz(r)-evn_rule_switch_idx_50Hz(r-1))) = 1;
+%                     end
+%                     
+%                     if evn_rule_switch_idx_50Hz(r+1) < evn_rule_switch_idx_50Hz(r)-499
+%                         rs_lockedwithruleswitch_tmp(r, 250+(evn_rule_switch_idx_50Hz(r+1)-evn_rule_switch_idx_50Hz(r))) = 1;
+%                     end
+%                 end
+% 
+%                 rs_lockedwithruleswitch = [rs_lockedwithruleswitch; rs_lockedwithruleswitch_tmp];
+                
+                %% deconvolution of rule switch responses - from 5 s before
+                % to 10 s after
+                Y = [Y; EEG.data(1, :)']; epoch_idx = -250:749;
+                
+%                 X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate);
+%                 for rs_idx = 1:size(evn_rule_switch_idx_50Hz, 1)
+%                    if evn_rule_switch_idx_50Hz(rs_idx) > 250 && evn_rule_switch_idx_50Hz(rs_idx)< length(EEG.data(1, :))-500
+%                        for ep_idx = 1:length(epoch_idx)
+%                            X_tmp(evn_rule_switch_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+%                        end
+%                    end
+%                 end
+% 
+%                 X_rs = [X_rs; X_tmp];
+%                 
+                
+                %% deconvolution of rule switch responses - from 5 s before
+                % to 10 s after
+                
+                X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate); 
+                for rs_idx = 1:size(evn_rule_switch_idx_50Hz, 1)
+                   if evn_rule_switch_idx_50Hz(rs_idx) > abs(epoch_idx(1)) && evn_rule_switch_idx_50Hz(rs_idx)< length(EEG.data(1, :))-epoch_idx(end)
+                       n_rs_events = n_rs_events + 1;
+                       for ep_idx = 1:length(epoch_idx)
+                           X_tmp(evn_rule_switch_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+                       end
+                   end
+                end
+
+                X1_rs = [X1_rs; X_tmp];
+                
+                
+               % deconvolution of in between rule switch - from 5 s
+               % before to 10s after event
+                X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate);
+                for rs_idx = 1:size(evn_btwrule_switch_idx_50Hz, 1)
+                   if evn_btwrule_switch_idx_50Hz(rs_idx) > abs(epoch_idx(1)) && evn_btwrule_switch_idx_50Hz(rs_idx)< length(EEG.data(1, :))-epoch_idx(end)
+                       n_btwrs_events = n_btwrs_events + 1;
+                       for ep_idx = 1:length(epoch_idx)
+                           X_tmp(evn_btwrule_switch_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+                       end
+                   end
+                end
+                
+                X_btwrs = [X_btwrs; X_tmp];    
+
+                
+
+
+%                % deconvolution high cpp - from 5 s
+%                % before to 10s after event
+%                 X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate);
+%                 for rs_idx = 1:size(evn_highcpp_idx_50Hz, 1)
+%                    if evn_highcpp_idx_50Hz(rs_idx) > abs(epoch_idx(1)) && evn_highcpp_idx_50Hz(rs_idx)< length(EEG.data(1, :))-epoch_idx(end)
+%                        for ep_idx = 1:length(epoch_idx)
+%                            X_tmp(evn_highcpp_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+%                        end
+%                    end
+%                 end
+%                 
+%                 X_highcpp = [sparse(X_highcpp); sparse(X_tmp)];
+%                 
+%                % deconvolution low cpp - from 5 s
+%                % before to 10s after event
+%                 X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate);
+%                 for rs_idx = 1:size(evn_lowcpp_idx_50Hz, 1)
+%                    if evn_lowcpp_idx_50Hz(rs_idx) > abs(epoch_idx(1)) && evn_lowcpp_idx_50Hz(rs_idx)< length(EEG.data(1, :))-epoch_idx(end)
+%                        for ep_idx = 1:length(epoch_idx)
+%                            X_tmp(evn_lowcpp_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+%                        end
+%                    end
+%                 end
+%                 
+%                 X_lowcpp = [sparse(X_lowcpp); sparse(X_tmp)];
+                
+
+                % choice events
+                X_tmp = zeros(size(EEG.data, 2), 15*EEG.srate); 
+                for rs_idx = 1:size(evn_choicetrial_idx_50Hz, 1)
+                   if evn_choicetrial_idx_50Hz(rs_idx) > abs(epoch_idx(1)) && evn_choicetrial_idx_50Hz(rs_idx)< length(EEG.data(1, :))-epoch_idx(end)
+                       n_choice_events = n_choice_events + 1;
+                       for ep_idx = 1:length(epoch_idx)
+                           X_tmp(evn_choicetrial_idx_50Hz(rs_idx)+epoch_idx(ep_idx), ep_idx) = 1;
+                       end
+                   end
+                end
+
+                X_choice = [X_choice; X_tmp];
+%                 
+            end
+        end
+        
+        % include rule switch, no rule switch, choice trials
+        X_rs = [X1_rs, X_btwrs, X_choice];
+        X_pinv=pinv(X_rs);
+        R_rs_btwrs_ch{grp} = [R_rs_btwrs_ch{grp}; (X_pinv * Y)'];
+        
+        clear X_rs X1_rs X_btwrs X_pinv
+
+
+        number_choice_events{grp} = [number_choice_events{grp}; n_choice_events];
+        number_rs_events{grp} = [number_rs_events{grp}; n_rs_events];
+        number_btwrs_events{grp} = [number_btwrs_events{grp}; n_btwrs_events];
+        
+        
+%         X_pinv=pinv([X_highcpp, X_lowcpp, X_choice]);
+%         R_highlowcpp_ch{grp} = [R_highlowcpp_ch{grp}; (X_pinv * Y)'];
+%         
+%         clear X_highcpp X_lowcpp X_choice
+
+    end
+end
+
+
+% figure; plot(epoch_idx, mean(R{1}, 1))
+% hold on
+% plot(epoch_idx, mean(R{2}, 1))
+   
+
+save_dir = [pwd, filesep, 'pupil_rule_switches_deconv'];
+mkdir(save_dir)
+cd(save_dir)
+
+% save R_highlowcpp_ch R_highlowcpp_ch
+save R_rs_btwrs_ch R_rs_btwrs_ch
+save number_choice_events number_choice_events
+save number_rs_events number_rs_events
+save number_btwrs_events number_btwrs_events
+
+% save R_rs_ch R_rs_ch 
+% save R_btwrs_ch R_btwrs_ch
+% save R_low_cpp_ch  R_low_cpp_ch
+% save R_high_cpp_ch  R_high_cpp_ch
+% save R_rs_ch R_rs_ch
+% save R_rs R_rs
+% save R_rsnochoice R_rsnochoice
+% save epochs_nochoice epochs_nochoice
+% % save R_3ars R_3ars
+% save R_15ars R_15ars
+% save R_btwrs R_btwrs
+% save R_highcpp R_highcpp
+% save R_lowcpp R_lowcpp
+% save R_choice R_choice
+% save PRs_lockedwithruleswitch PRs_lockedwithruleswitch
+
+% save R_btwrsnochoice R_btwrsnochoice
+% save epochs_btwrsnochoice epochs_btwrsnochoice
+
+%% plot pupil - choice trials
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches\deconv\pupil_rule_switches_deconv';
+
+load([save_dir, filesep, 'R_rs_btwrs_ch']); 
+
+x_time = -5:.02:14.998;     
+
+% data_rs{1} = R_rs_btwrs_ch{1}(:, 1:1000);
+% data_rs{2} = R_rs_btwrs_ch{2}(:, 1:1000);
+% 
+% data_btwrs{1} = R_rs_btwrs_ch{1}(:, 1001:2000);
+% data_btwrs{2} = R_rs_btwrs_ch{2}(:, 1001:2000);
+
+data_ch{1} = R_rs_btwrs_ch{1}(:, 2001:3000);
+data_ch{2} = R_rs_btwrs_ch{2}(:, 2001:3000);
+
+% % sig difference across groups
+% [pval, t_orig, crit_t] = mult_comp_perm_t2(data_bsl{1,1}, data_bsl{2,1});
+% sig_time = find(pval < .05); % figure; plot(t_orig)
+
+figure;
+data_mean = mean(data_ch{1}, 1);
+data_se = std(data_ch{1}, [], 1)/sqrt(size(data_ch{1}, 1));
+
+plot(x_time, data_mean, 'k', LineWidth=1.5)
+hold on
+jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+hold on
+
+data_mean = mean(data_ch{2}, 1);
+data_se = std(data_ch{2}, [], 1)/sqrt(size(data_ch{2}, 1));
+
+plot(x_time, data_mean, color =  [.75 0 0], LineWidth=1.5)
+hold on
+jbfill(x_time, data_mean + data_se, data_mean - data_se,  [.75 0 0],  [.75 0 0], 1, 0.25)
+hold on
+
+% % plot sig times
+% if ~isempty(sig_time)
+%     plot(x_time(sig_time), ones(length(sig_time), 1)*(-.001), 's', 'color', 'k', 'MarkerFaceColor','k');
+% 
+% end
+
+plot(x_time, zeros(length(x_time), 1), '--k')
+hold on
+
+plot([0 0], [-.07 .12], '--k')
+hold off
+ax = gca; box off; ax.LineWidth = 2.5;
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';  %  ylim padded
+axis([-inf inf -.07 .12])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+%     title(var_data(var), 'FontSize', 24, 'FontWeight','normal')
+
+
+%% plot pupil task-evoked response (choice trials) pooled across both groups
+
+
+% data_rs{1} = R_rs_btwrs_ch{1}(:, 1:1000);
+% data_rs{2} = R_rs_btwrs_ch{2}(:, 1:1000);
+% 
+% data_btwrs{1} = R_rs_btwrs_ch{1}(:, 1001:2000);
+% data_btwrs{2} = R_rs_btwrs_ch{2}(:, 1001:2000);
+
+data_ch_all = [R_rs_btwrs_ch{1}(:, 2001:3000);R_rs_btwrs_ch{2}(:, 2001:3000)];
+
+figure;
+data_mean = mean(data_ch_all, 1);
+data_se = std(data_ch_all, [], 1)/sqrt(size(data_ch_all, 1));
+
+plot(x_time, data_mean, 'k')
+hold on
+jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+hold on
+
+plot(x_time, zeros(length(x_time), 1), '--k')
+hold on
+
+plot([0 0], [-.07 .12], '--k')
+hold off
+ax = gca; box off
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';  %ylim padded
+axis([-inf inf -.06 .1])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+ 
+
+
+%% plot pupil
+% save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches\deconv';
+% load([save_dir, filesep, 'R.mat']);
+var_data = {'R_high_cpp_ch',...
+    'R_low_cpp_ch','R_btwrs_ch', 'R_rs_ch'};
+pupil_label = {'Pupil (% mean)'};
+x_time = -5:.02:14.998;    %c = colormap(cool); color2use = c(1:20:end, :);
+
+
+
+color2use([1, 4], :) = [0.8500 0.3250 0.0980; 0.3010 0.7450 0.9330];
+ var2use = [1, 4]; 
+ figure
+for var = var2use
+    
+    load([save_dir, filesep, var_data{var}]);
+    
+    eval(['data2plot = ', var_data{var}, ';']);
+    
+    % subtract 1s baseline
+    data_bsl = [];
+    for s = 1:size(data2plot{1}, 1)
+        data_bsl(s, :) = data2plot{1}(s, 1:1000);% - mean(data2plot{1}(s, 240:260), 2);
+    end
+    
+    
+    data_mean = mean(data2plot{1}, 1);
+    data_se = std(data2plot{1}, [], 1)/sqrt(size(data2plot{1}, 1));
+    
+    data_mean = mean(data_bsl, 1);
+    data_se = std(data_bsl, [], 1)/sqrt(size(data_bsl, 1));
+    
+    plot(x_time, data_mean, 'color', color2use(var, :))
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color2use(var, :), color2use(var, :), 1, 0.25)
+    hold on
+end
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.01 .015], '--k')
+%     legend(var_data(var2use))
+    hold off
+    ax = gca; box off
+%     ylim padded
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+%     axis([0 inf -.02 .02])
+    xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label, 'FontSize', 24, 'FontWeight','normal')
+%     title(var_data(var), 'FontSize', 24, 'FontWeight','normal')
+    
+%% plot pupil - rule switch vs no rule switch - two groups together - black and red
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches\deconv\pupil_rule_switches_deconv';
+% var_data = {'R_high_cpp_ch',...
+%     'R_low_cpp_ch','R_btwrs_ch', 'R_rs_ch'};
+load([save_dir, filesep, 'R_rs_btwrs_ch']); 
+
+pupil_label = {'Pupil (% mean)'};
+x_time = -5:.02:14.998;     
+
+data_rs{1} = R_rs_btwrs_ch{1}(:, 1:1000);
+data_rs{2} = R_rs_btwrs_ch{2}(:, 1:1000);
+
+data_btwrs{1} = R_rs_btwrs_ch{1}(:, 1001:2000);
+data_btwrs{2} = R_rs_btwrs_ch{2}(:, 1001:2000);
+
+data_ch{1} = R_rs_btwrs_ch{1}(:, 2001:3000);
+data_ch{2} = R_rs_btwrs_ch{2}(:, 2001:3000);
+
+color_grp = {'k', [.75 0 0]};
+
+figure;
+for grp = 1:2
+
+    data_mean = mean(data_rs{grp}, 1);
+    data_se = std(data_rs{grp}, [], 1)/sqrt(size(data_rs{grp}, 1));
+
+    plot(x_time, data_mean, 'color', color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color_grp{grp}, color_grp{grp}, 1, 0.25)
+    hold on
+
+
+%     % sig different from zero
+%     [pval, t_orig, crit_t] = mult_comp_perm_t1(data_bsl(:, 260:end)-data_bsl_btwrs(:, 260:end));
+%     sig_time = find(pval < .05); % figure; plot(t_orig)
+
+    data_mean = mean(data_btwrs{grp}, 1);
+    data_se = std(data_btwrs{grp}, [], 1)/sqrt(size(data_btwrs{grp}, 1));
+
+    plot(x_time, data_mean, '--', 'color', color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se,  color_grp{grp}, color_grp{grp}, 1, 0.25)
+    hold on
+end
+% plot sig times - effect of rule switch from LIMO calculated here:
+% D:\Project_LC_fMRI\analyses\pupil\LIMO_pupil_ruleswitch_deconv3events\LIMO_pupil_ruleswitch_Level2.m
+% load mask
+load('D:\Project_LC_fMRI\analyses\pupil\LIMO_pupil_ruleswitch_deconv3events\level2_RM_ANOVA_pupil_grp_ruleswitch\mask_main_effect.mat');
+if ~isempty(mask)
+        plot(x_time(mask > 0), ones(length(x_time(mask > 0)), 1)*(-.01), 's', 'color', 'k', 'MarkerFaceColor','k',...
+             'MarkerSize', 8);
+end
+hold on
+
+plot(x_time, zeros(length(x_time), 1), '--k')
+hold on
+
+plot([0 0], [-.015 .015], '--k')
+hold off
+ax = gca; box off; ax.LineWidth = 2.5;
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; %ylim padded
+axis([-inf inf -.013 .013])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+     
+%% plot pupil - rule switch vs no rule switch - two groups together
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches\deconv\pupil_rule_switches_deconv';
+% var_data = {'R_high_cpp_ch',...
+%     'R_low_cpp_ch','R_btwrs_ch', 'R_rs_ch'};
+load([save_dir, filesep, 'R_rs_btwrs_ch']); 
+
+pupil_label = {'Pupil (% mean)'};
+x_time = -5:.02:14.998;     
+
+data_rs{1} = R_rs_btwrs_ch{1}(:, 1:1000);
+data_rs{2} = R_rs_btwrs_ch{2}(:, 1:1000);
+
+data_btwrs{1} = R_rs_btwrs_ch{1}(:, 1001:2000);
+data_btwrs{2} = R_rs_btwrs_ch{2}(:, 1001:2000);
+
+data_ch{1} = R_rs_btwrs_ch{1}(:, 2001:3000);
+data_ch{2} = R_rs_btwrs_ch{2}(:, 2001:3000);
+
+figure;
+for grp = 1:2
+    if grp == 1
+        lnw = 3;
+    else
+        lnw = 1;
+    end
+
+    data_mean = mean(data_rs{grp}, 1);
+    data_se = std(data_rs{grp}, [], 1)/sqrt(size(data_rs{grp}, 1));
+
+    plot(x_time, data_mean, 'color',[.9 .6 0], 'LineWidth', lnw)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, [.9 .6 0], [.9 .6 0], 1, 0.25)
+    hold on
+
+
+%     % sig different from zero
+%     [pval, t_orig, crit_t] = mult_comp_perm_t1(data_bsl(:, 260:end)-data_bsl_btwrs(:, 260:end));
+%     sig_time = find(pval < .05); % figure; plot(t_orig)
+
+    data_mean = mean(data_btwrs{grp}, 1);
+    data_se = std(data_btwrs{grp}, [], 1)/sqrt(size(data_btwrs{grp}, 1));
+
+    plot(x_time, data_mean, '--', 'color',  [0 .6 .5], 'LineWidth', lnw)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se,  [0 .6 .5],  [0 .6 .5], 1, 0.25)
+    hold on
+end
+% plot sig times - effect of rule switch from LIMO calculated here:
+% D:\Project_LC_fMRI\analyses\pupil\LIMO_pupil_ruleswitch_deconv3events\LIMO_pupil_ruleswitch_Level2.m
+% load mask
+load('D:\Project_LC_fMRI\analyses\pupil\LIMO_pupil_ruleswitch_deconv3events\level2_RM_ANOVA_pupil_grp_ruleswitch\mask_main_effect.mat');
+if ~isempty(mask)
+        plot(x_time(mask > 0), ones(length(x_time(mask > 0)), 1)*(-.01), 's', 'color', 'k', 'MarkerFaceColor','k',...
+             'MarkerSize', 8);
+end
+hold on
+
+plot(x_time, zeros(length(x_time), 1), '--k')
+hold on
+
+plot([0 0], [-.015 .015], '--k')
+hold off
+ax = gca; box off
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; %ylim padded
+axis([-inf inf -.013 .013])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+     
+
+%% calculate average pupil size in each cluster
+mean_c1_rs_young = mean(mean(data_rs{1}(:, mask == 1), 2))
+mean_c1_rs_older = mean(mean(data_rs{2}(:, mask == 1), 2))
+
+mean_c2_rs_young = mean(mean(data_rs{1}(:, mask == 2), 2))
+mean_c2_rs_older = mean(mean(data_rs{2}(:, mask == 2), 2))
+
+sd_c1_rs_young = std(mean(data_rs{1}(:, mask == 1), 2))
+sd_c1_rs_older = std(mean(data_rs{2}(:, mask == 1), 2))
+
+sd_c2_rs_young = std(mean(data_rs{1}(:, mask == 2), 2))
+sd_c2_rs_older = std(mean(data_rs{2}(:, mask == 2), 2))
+
+
+mean_c1_btwrs_young = mean(mean(data_btwrs{1}(:, mask == 1), 2))
+mean_c1_btwrs_older = mean(mean(data_btwrs{2}(:, mask == 1), 2))
+
+mean_c2_btwrs_young = mean(mean(data_btwrs{1}(:, mask == 2), 2))
+mean_c2_btwrs_older = mean(mean(data_btwrs{2}(:, mask == 2), 2))
+
+sd_c1_btwrs_young = std(mean(data_btwrs{1}(:, mask == 1), 2))
+sd_c1_btwrs_older = std(mean(data_btwrs{2}(:, mask == 1), 2))
+
+sd_c2_btwrs_young = std(mean(data_btwrs{1}(:, mask == 2), 2))
+sd_c2_btwrs_older = std(mean(data_btwrs{2}(:, mask == 2), 2))
+
+
+
+
+%% plot individual pupil responses
+group = {'young', 'older'};
+
+for grp = 1:2
+    figure;
+    
+    for y = 1:size(R{grp}, 1)
+        plot(x_time, R{grp}(y, :), 'k')
+        hold on
+    end
+
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.06 .06], '--k')
+    hold off
+    ax = gca; box off
+%     ylim padded
+    ax.FontSize = 24; ax.FontName = 'Arial'; %ax.Color = 'none';
+    %     axis([-200 2000 -inf inf])
+    xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+    title( group{grp}, 'FontSize', 24, 'FontWeight','normal')
+end
+
+
+
+%% plot pupil - rule switch vs no rule switch
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load pupil_evoked_no_rule_switches_nobsln_HD_10s %R{grp}
+
+pupil_label = {'Pupil (% mean)', 'Pupil (z-score)', 'Pupil (a.u.)'};
+x_time = -5:.002:9.998;
+for chn = 1%:3
+    for grp = 1:2
+         % sig difference across conditions
+        [pval, t_orig, crit_t] = mult_comp_perm_t1(R{grp}-pupil_evoked_no_rule_switches_nobsln_HD{grp});
+        sig_time = find(pval < .05); % figure; plot(t_orig)
+
+        figure;
+        data_mean = mean(R{grp}, 1);
+        data_se = std(R{grp}, [], 1)/sqrt(size(R{chn,grp}, 1));
+
+        plot(x_time, data_mean, 'color',[.9 .6 0])
+        hold on
+        jbfill(x_time, data_mean + data_se, data_mean - data_se, [.9 .6 0], [.9 .6 0], 1, 0.25)
+        hold on
+
+        data_mean = mean(pupil_evoked_no_rule_switches_nobsln_HD{grp}, 1);
+        data_se = std(pupil_evoked_no_rule_switches_nobsln_HD{grp}, [], 1)/sqrt(size(pupil_evoked_no_rule_switches_nobsln_HD{grp}, 1));
+
+        plot(x_time, data_mean, '--', 'color',  [0 .6 .5])
+        hold on
+        jbfill(x_time, data_mean + data_se, data_mean - data_se,  [0 .6 .5],  [0 .6 .5], 1, 0.25)
+        hold on
+
+        % plot sig times
+        if ~isempty(sig_time)
+            plot(x_time(sig_time), ones(length(sig_time), 1)*(-.013), 's', 'color', 'k', 'MarkerFaceColor','k');
+
+        end
+
+        plot(x_time, zeros(length(x_time), 1), '--k')
+        hold on
+        plot([0 0], [-.015 .01], '--k')
+        hold off
+        ax = gca; box off
+        c = ax.Color;
+        % legend('Detection', 'GNG')
+        ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; ylim padded
+    %     axis([-200 2000 -inf inf])
+        xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+        ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+    end
+     
+end
+
+
+
+%% plot pupil - locked with high cpp vs low cpp - two groups together
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load pupil_evoked_lowcpp_nobsln_HD_10s % {grp}
+load pupil_evoked_cpp_nobsln_HD_10s
+
+pupil_label = {'Pupil (% mean)', 'Pupil (z-score)', 'Pupil (a.u.)'};
+x_time = -5:.002:9.998;        
+
+for chn = 1%:3
+    
+    figure;
+    for grp = 1:2
+        if grp == 1
+            lnw = 3;
+        else
+            lnw = 1;
+        end
+        
+         % sig difference across conditions
+        [pval, t_orig, crit_t] = mult_comp_perm_t1(pupil_evoked_cpp_nobsln_HD{grp}-pupil_evoked_lowcpp_nobsln_HD{grp});
+        sig_time = find(pval < .05); % figure; plot(t_orig)
+
+
+        data_mean = mean(pupil_evoked_cpp_nobsln_HD{grp}, 1);
+        data_se = std(pupil_evoked_cpp_nobsln_HD{grp}, [], 1)/sqrt(size(pupil_evoked_cpp_nobsln_HD{chn,grp}, 1));
+        
+        plot(x_time, data_mean, 'color',[.9 .6 0], 'LineWidth', lnw)
+        hold on
+        jbfill(x_time, data_mean + data_se, data_mean - data_se, [.9 .6 0], [.9 .6 0], 1, 0.25)
+        hold on
+
+        data_mean = mean(pupil_evoked_lowcpp_nobsln_HD{grp}, 1);
+        data_se = std(pupil_evoked_lowcpp_nobsln_HD{grp}, [], 1)/sqrt(size(pupil_evoked_lowcpp_nobsln_HD{grp}, 1));
+
+        plot(x_time, data_mean, '--', 'color',  [0 .6 .5], 'LineWidth', lnw)
+        hold on
+        jbfill(x_time, data_mean + data_se, data_mean - data_se,  [0 .6 .5],  [0 .6 .5], 1, 0.25)
+        hold on
+
+        % plot sig times
+        if ~isempty(sig_time)
+            plot(x_time(sig_time), ones(length(sig_time), 1)*(-.013), 's', 'color', 'k', 'MarkerFaceColor','k');
+
+        end
+
+        plot(x_time, zeros(length(x_time), 1), '--k')
+        hold on
+
+    end
+    
+    plot([0 0], [-.015 .01], '--k')
+    hold off
+    ax = gca; box off
+    c = ax.Color;
+    % legend('Detection', 'GNG')
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; ylim padded
+%     axis([-200 2000 -inf inf])
+    xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+     
+end
+
+%% plot pupil 
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load pupil_evoked_rule_switches_bsln_HD_10s %pupil_evoked_rule_switches_bsln_HD{grp}
+
+pupil_label = {'Pupil (% mean)', 'Pupil (z-score)', 'Pupil (a.u.)'};
+x_time = -5:.002:9.998;
+for chn = 1:3
+    
+     % sig difference across groups
+    [pval, t_orig, crit_t] = mult_comp_perm_t2(pupil_evoked_rule_switches_bsln_HD{chn, 1}, pupil_evoked_rule_switches_bsln_HD{chn, 2});
+    sig_time = find(pval < .05) % figure; plot(t_orig)
+
+    figure;
+    data_mean = mean(pupil_evoked_rule_switches_bsln_HD{chn, 1}, 1);
+    data_se = std(pupil_evoked_rule_switches_bsln_HD{chn, 1}, [], 1)/sqrt(size(pupil_evoked_rule_switches_bsln_HD{chn, 1}, 1));
+    
+    plot(x_time, data_mean, 'k')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+    hold on
+    
+    data_mean = mean(pupil_evoked_rule_switches_bsln_HD{chn, 2}, 1);
+    data_se = std(pupil_evoked_rule_switches_bsln_HD{chn, 2}, [], 1)/sqrt(size(pupil_evoked_rule_switches_bsln_HD{chn, 2}, 1));
+    
+    plot(x_time, data_mean, '--r')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'r', 'r', 1, 0.25)
+    hold on
+        % plot sig times
+    if ~isempty(sig_time)
+        plot(x_time(sig_time), ones(length(sig_time), 1)*(-.04), 's', 'color', 'k', 'MarkerFaceColor','k');
+        hold on
+    end
+    
+    
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    
+    hold off
+    ax = gca; box off
+    c = ax.Color;
+    % legend('Detection', 'GNG')
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+%     axis([-200 2000 -inf inf])
+    xlabel('Time (ms)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+     
+end
+
+%% plot pupil evoked responses 
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load pupil_evoked_cpp_nobsln_HD_10s %pupil_evoked_cpp_nobsln_HD{grp}
+
+pupil_label = {'Pupil (% mean)', 'Pupil (z-score)', 'Pupil (a.u.)'};
+x_time = -5:.002:9.998;
+for chn = 1%:3
+    
+    % sig different from zero
+    [pval, t_orig, crit_t] = mult_comp_perm_t1(pupil_evoked_cpp_nobsln_HD{chn, 1});
+    sig_time = find(pval < .05) % figure; plot(t_orig)
+    
+    figure;
+    data_mean = mean(pupil_evoked_cpp_nobsln_HD{chn, 1}, 1);
+    data_se = std(pupil_evoked_cpp_nobsln_HD{chn, 1}, [], 1)/sqrt(size(pupil_evoked_cpp_nobsln_HD{chn, 1}, 1));
+    
+    plot(x_time, data_mean, 'k')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+    hold on
+        % plot sig times
+    if ~isempty(sig_time)
+        plot(x_time(sig_time), ones(length(sig_time), 1)*(-.015), 's', 'color', 'k', 'MarkerFaceColor','k');
+        
+    end
+    
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.017 .005], '--k')
+    
+    hold off
+    ax = gca; box off
+    c = ax.Color; ylim padded
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+    axis([-inf inf -.017 .005])
+    xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+    
+    
+     % sig difference across groups
+    [pval, t_orig, crit_t] = mult_comp_perm_t2(pupil_evoked_cpp_nobsln_HD{chn, 1}, pupil_evoked_cpp_nobsln_HD{chn, 2});
+    sig_time = find(pval < .05) % figure; plot(t_orig)
+
+    figure;
+    data_mean = mean(pupil_evoked_cpp_nobsln_HD{chn, 1}, 1);
+    data_se = std(pupil_evoked_cpp_nobsln_HD{chn, 1}, [], 1)/sqrt(size(pupil_evoked_cpp_nobsln_HD{chn, 1}, 1));
+    
+    plot(x_time, data_mean, 'k')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+    hold on
+    
+    data_mean = mean(pupil_evoked_cpp_nobsln_HD{chn, 2}, 1);
+    data_se = std(pupil_evoked_cpp_nobsln_HD{chn, 2}, [], 1)/sqrt(size(pupil_evoked_cpp_nobsln_HD{chn, 2}, 1));
+    
+    plot(x_time, data_mean, '--r')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'r', 'r', 1, 0.25)
+    hold on
+   
+    % plot sig times
+    if ~isempty(sig_time)
+        plot(x_time(sig_time), ones(length(sig_time), 1)*(-.04), 's', 'color', 'k', 'MarkerFaceColor','k');
+        
+    end
+    
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.017 .005], '--k')
+    hold off
+    ax = gca; box off
+    c = ax.Color;
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+    axis([-inf inf -.017 .005])
+    xlabel('Time (ms)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+     
+end
+
+%% plot pupil evoked responses 
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load pupil_evoked_lowcpp_nobsln_HD_10s %pupil_evoked_cpp_nobsln_HD{grp}
+
+pupil_label = {'Pupil (% mean)', 'Pupil (z-score)', 'Pupil (a.u.)'};
+x_time = -5:.002:9.998;
+for chn = 1%:3
+    
+%     % sig different from zero
+%     [pval, t_orig, crit_t] = mult_comp_perm_t1(pupil_evoked_lowcpp_nobsln_HD{chn, 1});
+%     sig_time = find(pval < .05) % figure; plot(t_orig)
+    
+    figure;
+    data_mean = mean(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, 1);
+    data_se = std(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, [], 1)/sqrt(size(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, 1));
+    
+    plot(x_time, data_mean, 'k')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+    hold on
+        % plot sig times
+    if ~isempty(sig_time)
+        plot(x_time(sig_time), ones(length(sig_time), 1)*(-.015), 's', 'color', 'k', 'MarkerFaceColor','k');
+        
+    end
+    
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.017 .005], '--k')
+    
+    hold off
+    ax = gca; box off
+    c = ax.Color; ylim padded
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+    axis([-inf inf -.017 .005])
+    xlabel('Time (s)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+    
+    
+%      % sig difference across groups
+%     [pval, t_orig, crit_t] = mult_comp_perm_t2(pupil_evoked_cpp_nobsln_HD{chn, 1}, pupil_evoked_cpp_nobsln_HD{chn, 2});
+%     sig_time = find(pval < .05) % figure; plot(t_orig)
+
+    figure;
+    data_mean = mean(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, 1);
+    data_se = std(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, [], 1)/sqrt(size(pupil_evoked_lowcpp_nobsln_HD{chn, 1}, 1));
+    
+    plot(x_time, data_mean, 'k')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+    hold on
+    
+    data_mean = mean(pupil_evoked_lowcpp_nobsln_HD{chn, 2}, 1);
+    data_se = std(pupil_evoked_lowcpp_nobsln_HD{chn, 2}, [], 1)/sqrt(size(pupil_evoked_lowcpp_nobsln_HD{chn, 2}, 1));
+    
+    plot(x_time, data_mean, '--r')
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, 'r', 'r', 1, 0.25)
+    hold on
+   
+    % plot sig times
+    if ~isempty(sig_time)
+        plot(x_time(sig_time), ones(length(sig_time), 1)*(-.04), 's', 'color', 'k', 'MarkerFaceColor','k');
+        
+    end
+    
+    plot(x_time, zeros(length(x_time), 1), '--k')
+    hold on
+    plot([0 0], [-.017 .005], '--k')
+    hold off
+    ax = gca; box off
+    c = ax.Color;
+    ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+    axis([-inf inf -.017 .005])
+    xlabel('Time (ms)', 'FontSize', 24, 'FontWeight','normal')
+    ylabel(pupil_label{chn}, 'FontSize', 24, 'FontWeight','normal')
+     
+end
+
+%% plot cpp and uncertainty aligned with rule switch
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_rule_switches';
+cd(save_dir)
+load cpp_ruleswitch
+load uncertainty_ruleswitch
+
+x_time = -12:37;
+   
+figure;
+data_mean = mean([cpp_ruleswitch{1}; cpp_ruleswitch{2}], 1);
+data_se = std([cpp_ruleswitch{1}; cpp_ruleswitch{2}], [], 1)/sqrt(size([cpp_ruleswitch{1}; cpp_ruleswitch{2}], 1));
+yyaxis left
+plot(x_time, data_mean,  'ok', 'LineWidth', 2)
+hold on
+jbfill(x_time, data_mean + data_se, data_mean - data_se, 'k', 'k', 1, 0.25)
+hold on
+ylabel('CPP', 'FontSize', 24, 'FontWeight','normal')
+data_mean = mean([uncertainty_ruleswitch{1}; uncertainty_ruleswitch{2}], 1);
+data_se = std([uncertainty_ruleswitch{1}; uncertainty_ruleswitch{2}], [], 1)/sqrt(size([uncertainty_ruleswitch{1}; uncertainty_ruleswitch{2}], 1));
+yyaxis right
+plot(x_time, data_mean, 'd', 'color', [0.6350 0.0780 0.1840], 'LineWidth', 2)
+hold on
+jbfill(x_time, data_mean + data_se, data_mean - data_se, [0.6350 0.0780 0.1840], [0.6350 0.0780 0.1840], 1, 0.25)
+hold on
+
+% plot(x_time, zeros(length(x_time), 1), '--k')
+hold on
+plot([0 0], [-3.5 -1], '--k')
+hold off
+ax = gca; box off
+c = ax.Color;
+axis([-12 37 -inf inf])
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
+ax.YAxis(1).Color = 'k';
+ax.YAxis(2).Color = [0.6350 0.0780 0.1840];
+xlabel('Peri rule-switch samples', 'FontSize', 24, 'FontWeight','normal')
+ylabel('Uncertainty', 'FontSize', 24, 'FontWeight','normal')
+
+
+% uncertainty at time of rule swicth versus uncertainty three samples before
+
+[h,p,ci,stats] = ttest([uncertainty_ruleswitch{1}(:, 11); uncertainty_ruleswitch{2}(:, 11)], [uncertainty_ruleswitch{1}(:, 12); uncertainty_ruleswitch{2}(:, 12)])
+
+
+[h,p,ci,stats] = ttest([cpp_ruleswitch{1}(:, 12); cpp_ruleswitch{2}(:, 12)], [cpp_ruleswitch{1}(:, 8); cpp_ruleswitch{2}(:, 8)])
+
+
+%% aux functions
+% median split
+function median_split(data, sorting_variable, title_text)
+    data_size = size(data, 2);
+    data(:, end+1) = sorting_variable';
+    data_sorted = data;
+    data_sorted = sortrows(data_sorted, size(data_sorted, 2));
+
+    data_sorted_m1 = data_sorted(1:floor(size(data_sorted, 1)/2), 1:data_size);
+    data_sorted_m2 = data_sorted(floor(size(data_sorted, 1)/2)+1:end, 1:data_size);
+
+    mean_median_split(1, :) = mean(data_sorted_m1, 1);
+    mean_median_split(2, :) = mean(data_sorted_m2, 1);
+
+    se_median_split(1, :) = std(data_sorted_m1,[], 1)/sqrt(size(data_sorted_m1, 1));
+    se_median_split(2, :) = std(data_sorted_m2,[], 1)/sqrt(size(data_sorted_m2, 1));
+
+
+    colormap hot;
+    cmap = colormap;
+    
+    figure;
+    xaxis = -199:2:1500;
+    for q = 1:2
+        plot(xaxis, mean_median_split(q, :), 'LineWidth', 1.5, 'color', cmap(10*q,:)); hold on
+        jbfill(xaxis, mean_median_split(q, :)+se_median_split(q, :), mean_median_split(q, :)-se_median_split(q, :), cmap(10*q,:),cmap(10*q,:), 0.1)
+        hold on;
+    end
+    % zero line
+    hold on
+    plot(xaxis, zeros(length(xaxis)), 'k:');
+    hold off
+    ax = gca;
+%     legend('q1', 'q2', 'q3', 'q4', 'q5');
+    ax.FontSize = 20; ax.FontName = 'Times New Roman'; ax.Color = 'none';
+    axis([-200 1500 -inf inf])
+    xlabel('Time (ms)', 'FontSize', 28, 'FontWeight','normal')
+    ylabel({'Pupil size (%)'}, 'FontSize', 28, 'FontWeight','normal')
+    title(title_text, 'FontSize', 18, 'FontWeight','normal')
+    
+    data_sorted_mean_epoch_m1 = mean(data_sorted_m1, 2); % average value in epoch
+    data_sorted_mean_epoch_m2 = mean(data_sorted_m2, 2);
+    
+    mean_per_epoch_median_split(1, :) = mean(data_sorted_mean_epoch_m1, 1)*100;
+    mean_per_epoch_median_split(2, :) = mean(data_sorted_mean_epoch_m2, 1)*100;
+
+    se_per_epoch_median_split(1, :) = std(data_sorted_mean_epoch_m1,[], 1)/sqrt(size(data_sorted_mean_epoch_m1, 1))*100;
+    se_per_epoch_median_split(2, :) = std(data_sorted_mean_epoch_m2,[], 1)/sqrt(size(data_sorted_mean_epoch_m2, 1))*100;
+
+    figure;
+    e = errorbar(1:2,mean_per_epoch_median_split,se_per_epoch_median_split, 'LineWidth', 2);
+    e.Color = 'k';
+    ax = gca;
+    ax.FontSize = 20; ax.FontName = 'Times New Roman'; ax.Color = 'none';
+    axis([0 3 -3.8 1.5])
+    set(gca,'xtick',[1:5],'xticklabel','')
+%     xlabel('Median split', 'FontSize', 28, 'FontWeight','normal')
+    ylabel({'Pupil size (%)'}, 'FontSize', 28, 'FontWeight','normal')
+    title(title_text, 'FontSize', 18, 'FontWeight','normal')
+
+end
+
+
+%% function plot data 2 groups 1 task
+function plot_all_data_2groups(data_grp1, data_grp2, y_label_text, title_text)
+       figure;
+    % plot data for group 1
+    yMean=mean(data_grp1, 'omitnan');
+    y_se = std(data_grp1, 'omitnan')/sqrt(length(data_grp1(~isnan(data_grp1))));
+    
+        %plot the mean+-SEM box
+        %   RECTANGLE('Position',pos) creates a rectangle in 2-D coordinates.
+%   Specify pos as a four-element vector of the form [x y w h] in data
+%   units. The x and y elements determine the location and the w and h
+%   elements determine the size. The function plots into the current axes
+%   without clearing existing content from the axes.
+    box off
+    rectangle('Position',[1-0.3,yMean-y_se, 0.6, 2*y_se ],'FaceColor',[.7 .7 .7],'EdgeColor', [.7 .7 .7],'LineWidth',0.1);
+    hold on
+    for y=1:length(data_grp1)
+        plot(1+rand*0.2-0.1, data_grp1(y),'-o', 'color', [.8 .8 .8], ...
+            'MarkerEdgeColor','k','MarkerSize',12, 'LineWidth', 1.5);
+        hold on;
+    end
+    %plot line at zero    
+    plot([0 3],[0 0],'--k','LineWidth', 1);
+     %plot the mean line    
+    plot([1-0.3 1+0.3],[yMean yMean] ,'Color','k','LineWidth',5);
+   
+
+    % group 2
+    yMean=mean(data_grp2, 'omitnan');
+    y_se = std(data_grp2, 'omitnan')/sqrt(length(data_grp2(~isnan(data_grp2))));
+   rectangle('Position',[2-0.3,yMean-y_se, 0.6, 2*y_se ],'FaceColor',[.7 .7 .7],'EdgeColor', [.7 .7 .7],'LineWidth',0.1)
+   
+    for y=1:length(data_grp2)
+        plot(2+rand*0.2-0.1, data_grp2(y) ,'-o',  'color', [1 .5 .5], ...
+            'MarkerEdgeColor','k','MarkerSize',12, 'LineWidth', 1.5);
+        hold on;
+    end
+
+    %plot the mean line
+    plot([2-0.3 2+0.3],[yMean yMean] ,'Color','k','LineWidth',5);
+    
+
+    % axes('XColor','none');
+    hold off;
+    if strcmp(title_text, 'Run')
+        axis([0 3 -inf 6]);
+    elseif strcmp(title_text, 'Time-on-task')
+        axis([0 3 -inf .2]);
+    elseif strcmp(title_text, 'Alpha power')
+        axis([0 3 -inf 10]);
+    else
+        axis([0 3 -inf inf]);
+    end
+    ax = gca;
+    ax.LineWidth = 2.5; 
+    ax.FontSize = 24;
+    ax.FontName = 'Arial';
+    ax.Color = 'none';
+%     ax.XTickLabel= [];
+    ax.XAxis.FontSize = 30;
+    ax.XTickLabel= {'' 'Young' 'Older' ''};
+%     xticks([1 2])
+    ylabel(y_label_text, 'FontSize', 30, 'FontWeight','normal')
+    title(title_text, 'FontSize', 32, 'FontWeight','normal')
+
+%     x0=10;
+%     y0=10;
+%     width=400;
+%     height=400;
+%     set(gcf,'position',[x0,y0,width,height])
+end
