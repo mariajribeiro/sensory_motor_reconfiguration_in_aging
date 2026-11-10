@@ -15,6 +15,7 @@ group = participants_included;
 data_dir = 'D:\Project_LC_fMRI\data\training_data\';
 rule_repetitions = cell(2, 1); rule_last_accuracy = cell(2, 1); rule_avg_accuracy = cell(2, 1); rule_choice_trials = cell(2, 1);
 infer_repetitions = cell(2, 1); infer_last_accuracy = cell(2, 1); infer_avg_accuracy = cell(2, 1); infer_choice_trials = cell(2, 1);
+infer_easy_colored_choice_trials = cell(2, 1); infer_easy_colored_samples = cell(2, 1);
 fulltask_repetitions = cell(2, 1); fulltask_last_accuracy = cell(2, 1); fulltask_avg_accuracy = cell(2, 1); fulltask_choice_trials = cell(2, 1);
 for grp = 1:2
     for sbj = 1:length(group{grp})
@@ -82,6 +83,18 @@ for grp = 1:2
             numb_choice = [numb_choice; length(find(p.seq.phase5{1, rp}.type == 1))];
         end
         infer_choice_trials{grp} = [infer_choice_trials{grp}; mean(numb_choice), numb_choice(end)];
+
+
+        % check how many choice trials in the easy colored inference task - phase 3
+        % how many choice trials per block on average - number of evidence
+        % samples
+        numb_choice = []; numb_samples = [];
+        for rp = 1:length(p.seq.phase3)
+            numb_choice = [numb_choice; length(find(p.seq.phase3{1, rp}.type(1:100) == 1))];
+            numb_samples = [numb_samples; length(find(p.seq.phase3{1, rp}.type(1:100) == 0))];
+        end
+        infer_easy_colored_choice_trials{grp} = [infer_easy_colored_choice_trials{grp}; mean(numb_choice), numb_choice(end)];
+        infer_easy_colored_samples{grp} = [infer_easy_colored_samples{grp}; mean(numb_choice), numb_choice(end)];
         
    end
 end
@@ -121,6 +134,12 @@ median(infer_repetitions{2})
 
 iqr(infer_repetitions{1})
 iqr(infer_repetitions{2})
+
+
+%% inference only easy colored task - number of choice trials
+
+avg_choice_trls = mean([infer_easy_colored_choice_trials{1}(:, 2); infer_easy_colored_choice_trials{2}(:, 2)])
+sd_choice_trls = std([infer_easy_colored_choice_trials{1}(:, 2); infer_easy_colored_choice_trials{2}(:, 2)])
 
 %% rule only
 plot_2groups_variables(rule_last_accuracy{1}.*100, rule_last_accuracy{2}.*100,{'Accuracy (%)'},...

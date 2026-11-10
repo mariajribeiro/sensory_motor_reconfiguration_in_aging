@@ -19,6 +19,48 @@ for sbj = 1:size(DSet.P, 2)
     
 end
 
+%% compare accuracy with subjective lapse perception
+% load lapse data
+
+lapse = readtable('subjective_err_perception.xlsx');
+
+% reorder lapse to match accuracy
+acc_lapse = [];
+for s = 1:length(name)
+    acc_lapse(s, 1) = accuracy_fulltask_lab(s);
+    for ss = 1:size(lapse, 1)
+        if strcmp(name{s}, lapse.SubjID(ss))
+            acc_lapse(s, 2) = lapse.err_fulltask(ss);
+        end
+    end
+     acc_lapse(s, 3) =  group_numb(s);
+end
+
+figure; 
+plot(acc_lapse(acc_lapse(:, 3) == 1, 1), acc_lapse(acc_lapse(:, 3) == 1, 2), 'o')
+lsline
+
+figure; 
+plot(acc_lapse(acc_lapse(:, 3) == 2, 1), acc_lapse(acc_lapse(:, 3) == 2, 2), 'x')
+lsline
+
+[r,p] = corrcoef(acc_lapse(acc_lapse(:, 3) == 1, 1), acc_lapse(acc_lapse(:, 3) == 1, 2))
+
+[r,p] = corrcoef(acc_lapse(acc_lapse(:, 3) == 2, 1), acc_lapse(acc_lapse(:, 3) == 2, 2))
+
+
+lapses_by_acc_young = acc_lapse(acc_lapse(:, 3) == 1, 2)./acc_lapse(acc_lapse(:, 3) == 1, 1)
+
+lapses_by_acc_older = acc_lapse(acc_lapse(:, 3) == 2, 2)./acc_lapse(acc_lapse(:, 3) == 2, 1)
+
+[h,p,ci,stats] = ttest2(lapses_by_acc_young, lapses_by_acc_older)
+
+
+mean(lapses_by_acc_young)
+std(lapses_by_acc_young)
+mean(lapses_by_acc_older)
+std(lapses_by_acc_older)
+
 
 %% plot data
 data_grp1 = accuracy(strcmp(group, 'young_adults'))*100;

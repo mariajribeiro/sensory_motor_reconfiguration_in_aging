@@ -6,10 +6,23 @@ eeglab
 pupil_folder = fileparts(pwd);
 load([pupil_folder, '\LIMO_pupil\expected_chanlocs_both.mat']);
 
-% addpath('D:\Project_LC_fMRI\analyses');
-% group = participants_included;
+addpath('D:\Project_LC_fMRI\analyses');
+group = participants_included;
 
-level2_RM_ANOVA_dir = [pwd, '\level2_RM_ANOVA_grp_task_choice'];
+
+% load data
+save_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_cpp_deconv_run';
+load([save_dir, filesep, 'R_highlowCPP_ch_run']); 
+
+
+% one participant from the older group (AB132) does not have any pupil
+% data from the first half of the task - delete data from second half for
+% data participant
+idx = find(strcmp(group{2}, 'AB132'));
+R_highlowCPP_ch_run{2, 2}(idx, :) = [];
+
+
+level2_RM_ANOVA_dir = [pwd, '\level2_RM_ANOVA_grp_run_CPP'];
 mkdir(level2_RM_ANOVA_dir);
 cd(level2_RM_ANOVA_dir);
 
@@ -28,17 +41,21 @@ cd(level2_RM_ANOVA_dir);
 
 Y = []; gp = [];
 
-% load data
-data_dir = 'D:\Project_LC_fMRI\analyses\pupil\pupil_cpp_deconv_inf_full';
-load([data_dir , filesep, 'R_highlowCPP_ch_full_inf']); 
+
+
 
 % Y = channels, time, subjects, measures
-% choice trials - full task
-Y(1, :, :, 1) = [R_highlowCPP_ch_full_inf{1, 1}(:, 2001:3000); R_highlowCPP_ch_full_inf{2, 1}(:, 2001:3000)]'; 
-% choice trials - inference-only task
-Y(1, :, :, 2) = [R_highlowCPP_ch_full_inf{1, 2}(:, 2001:3000); R_highlowCPP_ch_full_inf{2, 2}(:, 2001:3000)]'; 
+% highCPP - run1 and 2
+Y(1, :, :, 1) = [R_highlowCPP_ch_run{1, 1}(:, 1:1000); R_highlowCPP_ch_run{2, 1}(:, 1:1000)]'; 
+% highCPP- run3 and 4
+Y(1, :, :, 2) = [R_highlowCPP_ch_run{1, 2}(:, 1:1000); R_highlowCPP_ch_run{2, 2}(:, 1:1000)]'; 
 
-gp(:, 1) = [ones(size(R_highlowCPP_ch_full_inf{1, 1}, 1), 1);  ones(size(R_highlowCPP_ch_full_inf{2, 1}, 1), 1)*2];
+% lowCPP - run1 and 2
+Y(1, :, :, 3) = [R_highlowCPP_ch_run{1, 1}(:, 1001:2000); R_highlowCPP_ch_run{2, 1}(:, 1001:2000)]'; 
+% lowCPP- run3 and 4
+Y(1, :, :, 4) = [R_highlowCPP_ch_run{1, 2}(:, 1001:2000); R_highlowCPP_ch_run{2, 2}(:, 1001:2000)]'; 
+
+gp(:, 1) = [ones(size(R_highlowCPP_ch_run{1, 1}, 1), 1);  ones(size(R_highlowCPP_ch_run{2, 1}, 1), 1)*2];
 
 % save Y Y
 % save gp gp
@@ -74,7 +91,7 @@ save LIMO LIMO
 
 %% repeated measures ANOVA
 % limo_random_robust(6,y,gp,factor_levels,LIMO,'go',option)
-LIMOpath = limo_random_robust(6, Y, gp, 2, LIMO);
+LIMOpath = limo_random_robust(6, Y, gp, [2, 2], LIMO);
 % 1 one_sample_parameter_X (channels, frames [time, freq or freq-time], [mean value, se, df, t, p])
 %   H0_one_sample_ttest_parameter_X (channels, frames, [T values under H0, p values under H0], LIMO.design.bootstrap)
 
@@ -102,6 +119,24 @@ end
 
 %%
 mask = [];
+% limo_display_results(Type,FileName,PathName,p,MCC,LIMO,flag,options)
+limo_display_results(1,'Rep_ANOVA_Main_effect_2.mat',pwd,0.05, 2,...
+    fullfile(pwd,'LIMO.mat'), 0);
+
+if ~isempty(mask)
+    save mask_main_effect_2 mask
+    save stat_values_main_effect_2 stat_values %F/t values
+    save p_values_main_effect_2 p_values
+
+    number_clusters = max(unique(mask(:)));
+    p_value_cluster = p_values(mask == 1);
+    max_p_value = max(p_values(mask ~= 0));
+    % what is the range of significant F/t values? 
+    stats_F = [min(stat_values(mask ~= 0)) max(stat_values(mask ~= 0))];
+end
+
+%%
+mask = [];
 limo_display_results(1,'Rep_ANOVA_Interaction_gp_Factor_1.mat',pwd,0.05, 2,...
     fullfile(pwd,'LIMO.mat'), 0);
 if ~isempty(mask)
@@ -117,7 +152,56 @@ if ~isempty(mask)
     stats_F = [min(stat_values(mask ~= 0)) max(stat_values(mask ~= 0))];
 end
 
+%%
+mask = [];
+limo_display_results(1,'Rep_ANOVA_Interaction_gp_Factor_2.mat',pwd,0.05, 2,...
+    fullfile(pwd,'LIMO.mat'), 0);
+if ~isempty(mask)
+    save mask_interaction_2 mask
+    save stat_values_interaction_2 stat_values %F/t values
+    save p_values_interaction_2 p_values
 
+
+    number_clusters = max(unique(mask(:)));
+    p_value_cluster = p_values(mask == 1);
+    max_p_value = max(p_values(mask ~= 0));
+    %     what is the range of significant F/t values? 
+    stats_F = [min(stat_values(mask ~= 0)) max(stat_values(mask ~= 0))];
+end
+
+%%
+mask = [];
+limo_display_results(1,'Rep_ANOVA_Interaction_Factors_12.mat',pwd,0.05, 2,...
+    fullfile(pwd,'LIMO.mat'), 0);
+if ~isempty(mask)
+    save mask_interaction_12 mask
+    save stat_values_interaction_12 stat_values %F/t values
+    save p_values_interaction_12 p_values
+
+
+    number_clusters = max(unique(mask(:)));
+    p_value_cluster = p_values(mask == 1);
+    max_p_value = max(p_values(mask ~= 0));
+    %     what is the range of significant F/t values? 
+    stats_F = [min(stat_values(mask ~= 0)) max(stat_values(mask ~= 0))];
+end
+
+%%
+mask = [];
+limo_display_results(1,'Rep_ANOVA_Interaction_gp_Factors_12.mat',pwd,0.05, 2,...
+    fullfile(pwd,'LIMO.mat'), 0);
+if ~isempty(mask)
+    save mask_interaction_12 mask
+    save stat_values_interaction_12 stat_values %F/t values
+    save p_values_interaction_12 p_values
+
+
+    number_clusters = max(unique(mask(:)));
+    p_value_cluster = p_values(mask == 1);
+    max_p_value = max(p_values(mask ~= 0));
+    %     what is the range of significant F/t values? 
+    stats_F = [min(stat_values(mask ~= 0)) max(stat_values(mask ~= 0))];
+end
 %%
 
 mask = [];
@@ -145,19 +229,131 @@ end
 %     % replot using 
 %     limo_display_image(LIMO,stat_values ,mask,'go/no-go HR effect',0) 
 
+%% plot pupil - high CPP vs low CPP - two groups together - black and red
 
+pupil_label = {'Pupil (% mean)'};
+x_time = -5:.02:14.998;     
+
+cond = 2;
+
+data_rs{1} = R_highlowCPP_ch_run{1, cond}(:, 1:1000);
+data_rs{2} = R_highlowCPP_ch_run{2, cond}(:, 1:1000);
+
+data_btwrs{1} = R_highlowCPP_ch_run{1, cond}(:, 1001:2000);
+data_btwrs{2} = R_highlowCPP_ch_run{2, cond}(:, 1001:2000);
+
+data_ch{1} = R_highlowCPP_ch_run{1, cond}(:, 2001:3000);
+data_ch{2} = R_highlowCPP_ch_run{2, cond}(:, 2001:3000);
+
+color_grp = {'k', [.75 0 0]};
+
+figure;
+for grp = 1:2
+
+    data_mean = mean(data_rs{grp}, 1);
+    data_se = std(data_rs{grp}, [], 1)/sqrt(size(data_rs{grp}, 1));
+
+    plot(x_time, data_mean, 'color', color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color_grp{grp}, color_grp{grp}, 1, 0.25)
+    hold on
+
+    data_mean = mean(data_btwrs{grp}, 1);
+    data_se = std(data_btwrs{grp}, [], 1)/sqrt(size(data_btwrs{grp}, 1));
+
+    plot(x_time, data_mean, '--', 'color',  color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color_grp{grp}, color_grp{grp}, 1, 0.25)
+
+    hold on
+end
+
+% % plot sig times
+% load('D:\Project_LC_fMRI\analyses\pupil\LIMO_pupil_lab_scanner\level2_RM_ANOVA_grp_site_CPP\mask_main_effect_2.mat')
+% sig_time = find(mask > 0);
+% if ~isempty(sig_time)
+%     plot(x_time(sig_time), ones(length(sig_time), 1)*(-.013), 's', 'color', 'k', 'MarkerFaceColor','k',...
+%             'MarkerSize', 4);
+% end
+
+
+hold on
+xline(0, '--k'); yline(0,  '--k')
+hold off
+ax = gca; box off; ax.LineWidth = 2.5;
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; %ylim padded
+axis([-inf inf -.014 .018])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+     
+%% plot pupil high CPP vs time-on-task
+
+pupil_label = {'Pupil (% mean)'};
+x_time = -5:.02:14.998;     
+
+
+data_highCPP{1, 1} = R_highlowCPP_ch_run{1, 1}(:, 1:1000);
+data_highCPP{2, 1} = R_highlowCPP_ch_run{2, 1}(:, 1:1000);
+
+data_highCPP{1, 2} = R_highlowCPP_ch_run{1, 2}(:, 1:1000);
+data_highCPP{2, 2} = R_highlowCPP_ch_run{2, 2}(:, 1:1000);
+
+
+color_grp = {'k', [.75 0 0]};
+
+figure;
+for grp = 1:2
+
+    data_mean = mean(data_highCPP{grp, 1}, 1);
+    data_se = std(data_highCPP{grp, 1}, [], 1)/sqrt(size(data_highCPP{grp, 1}, 1));
+
+    plot(x_time, data_mean, 'color', color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color_grp{grp}, color_grp{grp}, 1, 0.25)
+    hold on
+
+    data_mean = mean(data_highCPP{grp, 2}, 1);
+    data_se = std(data_highCPP{grp, 2}, [], 1)/sqrt(size(data_highCPP{grp, 2}, 1));
+
+    plot(x_time, data_mean, '--', 'color',  color_grp{grp}, 'LineWidth', 1.5)
+    hold on
+    jbfill(x_time, data_mean + data_se, data_mean - data_se, color_grp{grp}, color_grp{grp}, 1, 0.25)
+
+    hold on
+end
+
+% % plot sig times
+% load('mask_main_effect_2.mat')
+% sig_time = find(mask > 0);
+% if ~isempty(sig_time)
+%     plot(x_time(sig_time), ones(length(sig_time), 1)*(-.013), 's', 'color', 'k', 'MarkerFaceColor','k',...
+%             'MarkerSize', 4);
+% end
+
+
+plot(x_time, zeros(length(x_time), 1), '--k')
+
+hold on
+xline(0, '--k'); yline(0,  '--k')
+hold off
+ax = gca; box off; ax.LineWidth = 2.5;
+ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none'; %ylim padded
+axis([-inf inf -.014 .02])
+xlabel('Time (s)', 'FontSize', 28, 'FontWeight','normal')
+ylabel('Pupil (% mean)', 'FontSize', 28, 'FontWeight','normal')
+     
 
 %% average pupil across groups
 
-load mask_main_effect
-
-Ychoice_full = [R_highlowCPP_ch_full_inf{1, 1}(:, 2001:end); R_highlowCPP_ch_full_inf{2, 1}(:, 2001:end)]; 
-Ychoice_inf = [R_highlowCPP_ch_full_inf{1, 2}(:, 2001:end); R_highlowCPP_ch_full_inf{2, 2}(:, 2001:end)]; 
-
-
-mean_c1_diff = mean(mean(Ychoice_full(:, mask == 2), 2) - mean(Ychoice_inf(:, mask == 2), 2), 1)
-
-sd_c1_diff = std(mean(Ychoice_full(:, mask == 2), 2) - mean(Ychoice_inf(:, mask == 2), 2), 1)
+% load mask_main_effect
+% 
+% Ychoice_lab = [R_highlowCPP_ch_run{1, 1}(:, 2001:end); R_highlowCPP_ch_run{2, 1}(:, 2001:end)]; 
+% Ychoice_scanner = [R_highlowCPP_ch_run{1, 2}(:, 2001:end); R_highlowCPP_ch_run{2, 2}(:, 2001:end)]; 
+% 
+% 
+% mean_c1_diff = mean(mean(Ychoice_lab(:, mask == 2), 2) - mean(Ychoice_scanner(:, mask == 2), 2), 1)
+% 
+% sd_c1_diff = std(mean(Ychoice_lab(:, mask == 2), 2) - mean(Ychoice_scanner(:, mask == 2), 2), 1)
 
 
 

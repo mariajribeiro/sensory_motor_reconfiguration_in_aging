@@ -119,7 +119,10 @@ for s = 1:size(data_rs, 1)
     % fit with tme constant for easy of interpretation
     g = fittype('a-b*exp(-1/t*x)');
 %     [f0{grp}{idx}, gof{grp}{idx}] = fit(x,y,g,'StartPoint',[[ones(size(x)), -exp(-x)]\y; 1]);
-    [fit_exp_acc_rs{grp}{idx}, gof_exp_acc_rs{grp}{idx}] = fit(x,y,g,'StartPoint',[[ones(size(x)), -exp(-x)]\y; 100], 'Upper', [100, 100, inf],...
+    % [fit_exp_acc_rs{grp}{idx}, gof_exp_acc_rs{grp}{idx}] = fit(x,y,g,'StartPoint',[[ones(size(x)), -exp(-x)]\y; 100], 'Upper', [100, 100, inf],...
+    %     'Lower', [0 0 0]);
+
+    [fit_exp_acc_rs{grp}{idx}, gof_exp_acc_rs{grp}{idx}] = fit(x,y,g,'StartPoint',[[ones(size(x)), -exp(-x)]\y; 100], 'Upper', [100, 100, 30],...
         'Lower', [0 0 0]);
 
     plot(x,y,'o',x,fit_exp_acc_rs{grp}{idx}(x),'r-');
@@ -183,6 +186,153 @@ hold on; plot([0:30],  mean(exp_coef{2}(:, 1), 1)-mean(exp_coef{2}(:, 2), 1)*exp
 figure; plot([1:30], -mean(exp_coef{1}(:, 2), 1)*exp(-mean(exp_coef{1}(:, 3), 1).*[1:30]), 'k');
 hold on; plot([1:30],  -mean(exp_coef{2}(:, 2), 1)*exp(-mean(exp_coef{2}(:, 3), 1).*[1:30]),'--r');
 
+
+%% plot bar graphs with the fitted parameters
+% plot_2groups_boxplot(data_grp1, data_grp2, y_label_text, x_label_text, x_ticks, title_text)
+
+plot_2groups_boxplot(exp_coef{1}(:, 1), exp_coef{2}(:, 1), 'a = asymptote', {'YA', 'OA'},...
+   [1.5] , '')
+hold on
+
+axis([0.5 2.5 -inf inf]); ylim padded
+ax = gca;ax.XAxis.FontSize = 24;
+xtickangle(0); 
+xticks([1 2])
+xticklabels({'YA', 'OA'});
+x0=100;
+y0=100;
+width=250;
+height=400;
+set(gcf,'position',[x0,y0,width,height])
+
+%%
+[p,h,stats] = ranksum(exp_coef{1}(:, 1), exp_coef{2}(:, 1))
+
+median(exp_coef{1}(:, 1))
+iqr(exp_coef{1}(:, 1))
+
+median(exp_coef{2}(:, 1))
+iqr(exp_coef{2}(:, 1))
+
+%% plot_2groups_boxplot(data_grp1, data_grp2, y_label_text, x_label_text, x_ticks, title_text)
+%Vertical scaling
+plot_2groups_boxplot(exp_coef{1}(:, 2), exp_coef{2}(:, 2), 'b = vertical scaling', {'YA', 'OA'},...
+   [1.5] , '')
+hold on
+
+axis([0.5 2.5 -inf inf]); ylim padded
+ax = gca;ax.XAxis.FontSize = 24;
+xtickangle(0); 
+xticks([1 2])
+xticklabels({'YA', 'OA'});
+x0=100;
+y0=100;
+width=250;
+height=400;
+set(gcf,'position',[x0,y0,width,height])
+
+%%
+[p,h,stats] = ranksum(exp_coef{1}(:, 2), exp_coef{2}(:, 2))
+
+median(exp_coef{1}(:, 2))
+iqr(exp_coef{1}(:, 2))
+
+median(exp_coef{2}(:, 2))
+iqr(exp_coef{2}(:, 2))
+
+%% plot_2groups_boxplot(data_grp1, data_grp2, y_label_text, x_label_text, x_ticks, title_text)
+%Time constant
+plot_2groups_boxplot(exp_coef{1}(:, 3), exp_coef{2}(:, 3), '\tau = time constant', {'YA', 'OA'},...
+   [1.5] , '')
+hold on
+
+axis([0.5 2.5 -inf inf]); ylim padded
+ax = gca;ax.XAxis.FontSize = 24;
+xtickangle(0); 
+xticks([1 2])
+xticklabels({'YA', 'OA'});
+x0=100;
+y0=100;
+width=250;
+height=400;
+set(gcf,'position',[x0,y0,width,height])
+
+%%
+[p,h,stats] = ranksum(exp_coef{1}(:, 3), exp_coef{2}(:, 3))
+
+
+
+median(exp_coef{1}(:, 3))
+iqr(exp_coef{1}(:, 3))
+
+median(exp_coef{2}(:, 3))
+iqr(median(exp_coef{2}(:, 3)))
+
+%%
+
+[iqr_old, q_old] = iqr(exp_coef{2}(:, 2));
+
+outliers_old = find(exp_coef{2}(:, 2) > q_old(2) + 1.5 * iqr_old | exp_coef{2}(:, 2) < q_old(1) - 1.5 * iqr_old )
+
+
+
+iqr_yng = iqr(exp_coef{1}(:, 2));
+median_yng = median(exp_coef{1}(:, 2));
+outliers_yng = find(exp_coef{1}(:, 2) > median_yng + 1.5 * iqr_yng)
+
+
+plot_2groups_boxplot(exp_coef{1}(setdiff(1:length(exp_coef{1}(:, 2)), outliers_yng), 2),...
+    exp_coef{2}(setdiff(1:length(exp_coef{2}(:, 2)), outliers_old ), 2), {'Vertical scaling'}, {'YA', 'OA'},...
+   [1.5] , '')
+hold on
+
+axis([0.5 2.5 -inf inf]); ylim padded
+ax = gca;ax.XAxis.FontSize = 24;
+xtickangle(0); 
+xticks([1 2])
+xticklabels({'YA', 'OA'});
+x0=100;
+y0=100;
+width=300;
+height=400;
+set(gcf,'position',[x0,y0,width,height])
+
+
+[p,h,stats] = ranksum(exp_coef{1}(:, 2), exp_coef{2}(:, 2))
+
+[p,h,stats] = ranksum(exp_coef{1}(setdiff(1:length(exp_coef{1}(:, 2)), outliers_yng), 2),...
+    exp_coef{2}(setdiff(1:length(exp_coef{2}(:, 2)), outliers_old ), 2))
+
+%% exclude outliers
+
+[iqr_old, q_old] = iqr(exp_coef{2}(:, 3));
+outliers_old = find(exp_coef{2}(:, 3) > q_old(2) + 1.5 * iqr_old | exp_coef{2}(:, 3) < q_old(1) - 1.5 * iqr_old )
+
+
+[iqr_yng, q_yng] = iqr(exp_coef{1}(:, 3));
+outliers_yng = find(exp_coef{1}(:, 3) > q_yng(2) + 1.5 * iqr_yng | exp_coef{1}(:, 3) < q_yng(1) - 1.5 * iqr_yng)
+
+
+plot_2groups_boxplot(exp_coef{1}(setdiff(1:length(exp_coef{1}(:, 3)), outliers_yng), 3),...
+    exp_coef{2}(setdiff(1:length(exp_coef{2}(:, 3)), outliers_old ), 3), {'Time constant'}, {'YA', 'OA'},...
+   [1.5] , '')
+hold on
+
+axis([0.5 2.5 -inf inf]); ylim padded
+ax = gca;ax.XAxis.FontSize = 24;
+xtickangle(0); 
+xticks([1 2])
+xticklabels({'YA', 'OA'});
+x0=100;
+y0=100;
+width=300;
+height=400;
+set(gcf,'position',[x0,y0,width,height])
+
+
+[p,h,stats] = ranksum(exp_coef{1}(:, 3), exp_coef{2}(:, 3))
+
+figure; boxplot(exp_coef{2}(:, 3))
 
 %% plot data + fitted data
  
@@ -315,3 +465,84 @@ ax.FontSize = 24; ax.FontName = 'Arial'; ax.Color = 'none';
 xlabel('Sample relative to rule-switch', 'FontSize', 24, 'FontWeight','normal')
 ylabel('Accuracy (%)', 'FontSize', 24, 'FontWeight','normal')
 
+
+
+%% function plot data 2 groups 7 variables
+function plot_2groups_boxplot(data_grp1, data_grp2, y_label_text, x_label_text, x_ticks, title_text)
+% data with observations x variables
+    figure;
+    % plot data for group 1
+    yMean=nanmean(data_grp1, 1);
+    y_se = std(data_grp1,[], 1, 'omitnan')/sqrt(size(data_grp1, 1));
+    
+    for v = 1:size(data_grp1, 2)
+        for y=1:size(data_grp1, 1)
+            plot(1+rand*0.2-0.1, data_grp1(y, v),'-o', 'color', [.8 .8 .8], ...
+                'MarkerEdgeColor',[.75 .75 .75],'MarkerSize', 5, 'LineWidth', 1.5);
+            hold on;
+        end
+    end
+%         % plot the mean line    
+%         plot([pst-0.3 pst+0.3],[yMean(v) yMean(v)] ,'Color','k','LineWidth',2);
+        bx2 = boxplot([data_grp1, NaN(length(data_grp1), 1), NaN(length(data_grp1), 1)], 'whisker', 30, 'notch', 'on','colors','k');
+        set(bx2,'LineWidth',1.5);
+
+        hold on
+%         errorbar(pst, yMean(v), y_se(v),"-","MarkerSize",2,...
+%             "MarkerEdgeColor","k","MarkerFaceColor","k", 'LineWidth', 1.5, 'color', 'k');
+%         er.Color = [0 0 0];                            
+%         er.LineStyle = 'none';  
+
+    
+    % group 2
+    yMean=nanmean(data_grp2, 1);
+    y_se = std(data_grp2,[], 1, 'omitnan')/sqrt(size(data_grp2, 1));
+    
+        %plot the mean+-SEM box
+        %   RECTANGLE('Position',pos) creates a rectangle in 2-D coordinates.
+%   Specify pos as a four-element vector of the form [x y w h] in data
+%   units. The x and y elements determine the location and the w and h
+%   elements determine the size. The function plots into the current axes
+%   without clearing existing content from the axes.
+
+    for v = 1:size(data_grp2, 2)
+%         rectangle('Position',[pst-0.3,yMean(v)-y_se(v), 0.6, 2*y_se(v) ],'FaceColor',[.7 .7 .7],'EdgeColor', [.7 .7 .7],'LineWidth',0.1);
+%         hold on
+        for y=1:size(data_grp2, 1)
+            plot(2+rand*0.2-0.1, data_grp2(y, v),'-d', 'color', [.8 .8 .8], ...
+                'MarkerEdgeColor',[.75 0.5 0.5],'MarkerSize',5, 'LineWidth', 1.5);
+            hold on;
+        end
+    end
+%         % plot the mean line    
+%         plot([pst-0.3 pst+0.3],[yMean(v) yMean(v)] ,'Color','k','LineWidth',2);
+        bx1 = boxplot([NaN(length(data_grp2), 1), data_grp2, NaN(length(data_grp2), 1)], 'whisker', 30, 'notch', 'on','colors','k');
+        set(bx1,'LineWidth',1.5);
+%         bar(pst, yMean(v), 'FaceColor','None','EdgeColor',[0 0 0],'LineWidth',1.5);
+        hold on
+%             errorbar(pst, yMean(v), y_se(v),"-","MarkerSize",2,...
+%         "MarkerEdgeColor","k","MarkerFaceColor","k", 'LineWidth', 1.5, 'color', 'k')
+
+
+    % axes('XColor','none');
+    hold off;     box off
+%     axis([0 3 -inf inf]);
+    ax = gca;
+    ax.LineWidth = 2.5; 
+    ax.FontSize = 24;
+    ax.FontName = 'Arial';
+    ax.Color = 'none';
+    ax.XTickLabel= [];
+    ax.XAxis.FontSize = 16;
+    xticks(x_ticks);
+    ax.XTickLabel= x_label_text;
+    xtickangle(45)
+    ylabel(y_label_text, 'FontSize', 30, 'FontWeight','normal')
+    title(title_text, 'FontSize', 24, 'FontWeight','normal')
+
+%     x0=10;
+%     y0=10;
+%     width=400;
+%     height=400;
+%     set(gcf,'position',[x0,y0,width,height])
+end
