@@ -25,6 +25,7 @@ https://doi.org/10.1016/j.neuron.2022.11.009.
 
 Submodule SR-switches-behav points to code used for the computational modelling of behavioral data.
 
+The data that support the findings will be available in POLEN DataHub.
 
 MIT License. See the LICENSE file for details. 
 
