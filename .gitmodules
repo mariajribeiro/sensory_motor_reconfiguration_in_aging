@@ -1,0 +1,3 @@
+[submodule "SR-switches-behav"]
+	path = SR-switches-behav
+	url = https://github.com/jCalderTravis/SR-switches-behav
